@@ -22,9 +22,9 @@
         </template>
 
         <template v-else>
-          <span class="user-name">
+          <a href="#" @click.prevent="goTo('/profile')" class="nav-link profile-link">
             <i class="pi pi-user"></i> {{ authStore.user?.name || 'Usuario' }}
-          </span>
+          </a>
           <button class="btn-logout" @click="handleLogout">Cerrar Sesión</button>
         </template>
       </div>
@@ -120,12 +120,19 @@ const handleLogout = () => {
   color: #2563eb;
 }
 
-.user-name {
-  color: #1e293b;
+.profile-link {
+  text-decoration: none;
+  color: #475569;
   font-weight: 500;
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  transition: color 0.2s;
+  cursor: pointer;
+}
+
+.profile-link:hover {
+  color: #2563eb;
 }
 
 .btn-register {
