@@ -1,0 +1,17 @@
+# Dependencias
+node_modules/
+
+# Entornos de Producción
+dist/
+dist-ssr/
+
+# Archivos locales de entorno
+.env
+.env.*.local
+
+# Archivos del sistema y editores
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.log
