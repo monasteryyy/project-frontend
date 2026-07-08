@@ -43,8 +43,11 @@ import { useRouter } from 'vue-router'
 import BaseInput from '../components/BaseInput.vue'
 import BaseButton from '../components/BaseButton.vue'
 import { authService } from '../services/auth.service'
+import { useAuthStore } from '../stores/auth.store'
 
 const router = useRouter()
+const authStore = useAuthStore()
+
 const email = ref('')
 const password = ref('')
 const isLoading = ref(false)
@@ -59,10 +62,11 @@ const handleLogin = async () => {
     console.log('✅ Respuesta del backend:', response.data)
     
     const { token, user } = response.data
-    localStorage.setItem('token', token)
-    localStorage.setItem('user', JSON.stringify(user))
     
-    console.log('✅ Token guardado:', localStorage.getItem('token'))
+    // Usar el store en lugar de localStorage directamente
+    authStore.setAuth({ token, user })
+    
+    console.log('✅ Token guardado en store')
     
     router.push('/dashboard')
   } catch (error: any) {
