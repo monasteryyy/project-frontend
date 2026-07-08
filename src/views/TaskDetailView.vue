@@ -70,7 +70,7 @@
               class="btn-apply" 
               :class="{ 'is-applied': hasApplied }"
               @click="applyForTask"
-              :disabled="hasApplied || isApplying"
+              :disabled="hasApplied || isApplying || task.userId === currentUser.id"
             >
               {{ isApplying ? 'Postulando...' : hasApplied ? 'Te has postulado' : 'Postularme a esta tarea' }}
             </button>
@@ -81,10 +81,10 @@
           <h3>Acerca del Empleador</h3>
           
           <div class="employer-profile">
-            <div class="avatar">{{ employer.initials }}</div>
+            <div class="avatar">{{ task.user?.name?.charAt(0) || 'E' }}</div>
             <div class="employer-name">
-              <h4>{{ employer.name }}</h4>
-              <RatingStars :rating="employer.rating" :readonly="true" :showLabel="true" />
+              <h4>{{ task.user?.name || 'Empleador' }}</h4>
+              <RatingStars :rating="4.5" :readonly="true" :showLabel="true" />
             </div>
           </div>
 
@@ -92,8 +92,8 @@
             <h4>Información de Contacto</h4>
             
             <div v-if="isAccepted" class="contact-info revealed">
-              <p><i class="pi pi-envelope"></i> {{ employer.email }}</p>
-              <p><i class="pi pi-phone"></i> {{ employer.phone }}</p>
+              <p><i class="pi pi-envelope"></i> {{ task.user?.email || 'No disponible' }}</p>
+              <p><i class="pi pi-phone"></i> {{ task.user?.telephone || 'No disponible' }}</p>
             </div>
             
             <div v-else class="contact-info hidden-info">
@@ -133,15 +133,12 @@ const task = ref({
   location: '',
   amount: 0,
   status: '',
-  userId: 0
-})
-
-const employer = ref({
-  name: 'Empleador',
-  initials: 'EM',
-  rating: 4.5,
-  email: 'empleador@test.com',
-  phone: '+57 300 000 0000'
+  userId: 0,
+  user: {
+    name: '',
+    email: '',
+    telephone: ''
+  }
 })
 
 const hasApplied = ref(false)
@@ -192,9 +189,7 @@ onMounted(async () => {
     const response = await taskService.getOne(id)
     task.value = response.data
 
-    const historyResponse = await taskService.getHistory(id)
-    history.value = historyResponse.data
-
+    // Verificar si el usuario tiene una postulación aceptada
     if (currentUser.id) {
       const postulations = await postulationService.getByTask(id)
       const userPostulation = postulations.data.find(
@@ -202,8 +197,14 @@ onMounted(async () => {
       )
       if (userPostulation) {
         hasApplied.value = true
+        if (userPostulation.status === 'aceptada') {
+          isAccepted.value = true
+        }
       }
     }
+
+    const historyResponse = await taskService.getHistory(id)
+    history.value = historyResponse.data
   } catch (error) {
     console.error('Error al cargar tarea:', error)
     router.push('/tasks')
