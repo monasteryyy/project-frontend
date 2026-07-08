@@ -59,6 +59,37 @@
                 </div>
               </div>
             </div>
+
+            <!-- Calificar (solo para el trabajador cuando la tarea está finalizada) -->
+            <div class="rating-section" v-if="canRate">
+              <h3>Calificar Empleador</h3>
+              <div class="rating-stars">
+                <span 
+                  v-for="star in 5" 
+                  :key="star"
+                  class="star"
+                  :class="{ active: ratingScore >= star }"
+                  @click="ratingScore = star"
+                >
+                  ★
+                </span>
+              </div>
+              <div class="rating-comment-form">
+                <textarea 
+                  v-model="ratingComment" 
+                  placeholder="Escribe un comentario (opcional)"
+                  maxlength="300"
+                ></textarea>
+                <span class="char-count">{{ ratingComment.length }}/300</span>
+              </div>
+              <button 
+                class="btn-rate" 
+                @click="submitRating"
+                :disabled="ratingScore === 0 || isRatingSubmitting"
+              >
+                {{ isRatingSubmitting ? 'Enviando...' : 'Enviar Calificación' }}
+              </button>
+            </div>
           </div>
 
           <div class="task-footer">
@@ -78,17 +109,20 @@
         </main>
 
         <aside class="employer-card">
-          <h3>Acerca del Empleador</h3>
+          <h3>Acerca del {{ isOwner ? 'Trabajador' : 'Empleador' }}</h3>
           
           <div class="employer-profile">
-            <div class="avatar">{{ task.user?.name?.charAt(0) || 'E' }}</div>
+            <div class="avatar">{{ profileUser?.name?.charAt(0) || 'U' }}</div>
             <div class="employer-name">
-              <h4>{{ task.user?.name || 'Empleador' }}</h4>
-              <RatingStars :rating="4.5" :readonly="true" :showLabel="true" />
+              <h4>{{ profileUser?.name || 'Usuario' }}</h4>
+              <div v-if="profileRating > 0">
+                <RatingStars :rating="profileRating" :readonly="true" :showLabel="true" />
+              </div>
+              <span v-else class="no-rating">Sin calificaciones aún</span>
             </div>
           </div>
 
-          <div class="employer-contact">
+          <div class="employer-contact" v-if="!isOwner">
             <h4>Información de Contacto</h4>
             
             <div v-if="isAccepted" class="contact-info revealed">
@@ -114,6 +148,7 @@ import { useRoute, useRouter } from 'vue-router'
 import RatingStars from '../components/RatingStars.vue'
 import { taskService } from '../services/tasks.service'
 import { postulationService } from '../services/postulations.service'
+import { ratingsService } from '../services/ratings.service'
 
 const route = useRoute()
 const router = useRouter()
@@ -145,8 +180,23 @@ const hasApplied = ref(false)
 const isAccepted = ref(false)
 const availableStatuses = ['Creada', 'En Progreso', 'Finalizada', 'Cancelada']
 
+// Calificaciones
+const ratingScore = ref(0)
+const ratingComment = ref('')
+const isRatingSubmitting = ref(false)
+const ratingSubmitted = ref(false)
+const profileRating = ref(0)
+const profileUser = ref<any>(null)
+
 const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
 const isOwner = computed(() => task.value.userId === currentUser.id)
+
+const canRate = computed(() => {
+  return task.value.status === 'Finalizada' && 
+         !isOwner.value &&
+         hasApplied.value &&
+         !ratingSubmitted.value
+})
 
 const applyForTask = async () => {
   if (!currentUser.id) {
@@ -178,6 +228,29 @@ const applyForTask = async () => {
   }
 }
 
+const submitRating = async () => {
+  if (ratingScore.value === 0) {
+    alert('Selecciona una calificación de 1 a 5 estrellas')
+    return
+  }
+
+  isRatingSubmitting.value = true
+  try {
+    await ratingsService.create({
+      score: ratingScore.value,
+      comments: ratingComment.value || undefined,
+      taskId: task.value.id,
+      receiverUserId: task.value.userId,
+    })
+    ratingSubmitted.value = true
+    alert('¡Calificación enviada exitosamente!')
+  } catch (error: any) {
+    alert(error.response?.data?.message || 'Error al enviar la calificación')
+  } finally {
+    isRatingSubmitting.value = false
+  }
+}
+
 onMounted(async () => {
   const id = Number(route.params.id)
   if (!id) {
@@ -189,9 +262,35 @@ onMounted(async () => {
     const response = await taskService.getOne(id)
     task.value = response.data
 
-    // Verificar si el usuario tiene una postulación aceptada
+    // Obtener todas las postulaciones de la tarea
+    const postulations = await postulationService.getByTask(id)
+
+    if (isOwner.value) {
+      // EMPLEADOR: Mostrar calificación del trabajador
+      // Buscar la postulación aceptada o la primera postulación pendiente
+      const targetPostulation = postulations.data.find(
+        (p: any) => p.status === 'aceptada'
+      ) || postulations.data.find(
+        (p: any) => p.status === 'pendiente'
+      )
+      
+      if (targetPostulation) {
+        profileUser.value = targetPostulation.user
+        const avgResponse = await ratingsService.getAverage(targetPostulation.userId)
+        profileRating.value = avgResponse.data.average
+      } else {
+        profileUser.value = { name: 'Sin postulantes' }
+        profileRating.value = 0
+      }
+    } else {
+      // TRABAJADOR: Mostrar calificación del empleador
+      profileUser.value = task.value.user
+      const avgResponse = await ratingsService.getAverage(task.value.userId)
+      profileRating.value = avgResponse.data.average
+    }
+
+    // Verificar si el usuario actual tiene una postulación aceptada
     if (currentUser.id) {
-      const postulations = await postulationService.getByTask(id)
       const userPostulation = postulations.data.find(
         (p: any) => p.userId === currentUser.id
       )
@@ -507,6 +606,86 @@ const getStatusClass = (status: string) => {
   font-size: 0.75rem;
 }
 
+/* Estilos para calificaciones */
+.rating-section {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.rating-section h3 {
+  margin-bottom: 1rem;
+  color: #1e293b;
+}
+
+.rating-stars {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.star {
+  font-size: 2rem;
+  cursor: pointer;
+  color: #cbd5e1;
+  transition: color 0.2s;
+}
+
+.star:hover,
+.star.active {
+  color: #eab308;
+}
+
+.rating-comment-form {
+  position: relative;
+  margin-bottom: 1rem;
+}
+
+.rating-comment-form textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 0.9rem;
+  min-height: 80px;
+}
+
+.rating-comment-form textarea:focus {
+  border-color: #3b82f6;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.char-count {
+  position: absolute;
+  bottom: 0.5rem;
+  right: 0.75rem;
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.btn-rate {
+  background-color: #eab308;
+  color: white;
+  border: none;
+  padding: 0.75rem 2rem;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-rate:hover:not(:disabled) {
+  background-color: #ca8a04;
+}
+
+.btn-rate:disabled {
+  background-color: #94a3b8;
+  cursor: not-allowed;
+}
+
 .task-footer {
   margin-top: 2.5rem;
   padding-top: 1.5rem;
@@ -604,6 +783,12 @@ const getStatusClass = (status: string) => {
   margin: 0 0 0.25rem 0;
   font-size: 1.125rem;
   color: #1e293b;
+}
+
+.no-rating {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  font-style: italic;
 }
 
 .employer-contact h4 {

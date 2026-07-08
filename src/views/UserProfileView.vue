@@ -18,7 +18,7 @@
               <h2>{{ user.name }}</h2>
               <p class="email">{{ user.email }}</p>
               <div class="rating">
-                <span class="stars">⭐ {{ user.rating || 'N/A' }}</span>
+                <span class="stars">⭐ {{ averageRating || 'N/A' }}</span>
                 <span class="verified" v-if="user.verified">
                   <i class="pi pi-check-circle"></i> Verificado
                 </span>
@@ -76,6 +76,27 @@
             </button>
           </form>
         </div>
+
+        <!-- Calificaciones -->
+        <div class="profile-card">
+          <h3>Mis Calificaciones</h3>
+          <div v-if="ratingsLoading" class="loading-state">
+            <p>Cargando calificaciones...</p>
+          </div>
+          <div v-else-if="ratings.length === 0" class="empty-state">
+            <p>No tienes calificaciones aún.</p>
+          </div>
+          <div v-else class="ratings-list">
+            <div v-for="rating in ratings" :key="rating.id" class="rating-item">
+              <div class="rating-header">
+                <span class="rating-user">{{ rating.senderUser?.name || 'Usuario' }}</span>
+                <span class="rating-score">⭐ {{ rating.score }}</span>
+              </div>
+              <p class="rating-comment">{{ rating.comments || 'Sin comentarios' }}</p>
+              <span class="rating-date">{{ formatDate(rating.date) }}</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -86,13 +107,18 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { userService } from '../services/users.service'
 import { authService } from '../services/auth.service'
+import { ratingsService } from '../services/ratings.service'
 
 const router = useRouter()
 const isLoading = ref(true)
 const isUpdating = ref(false)
 const isChangingPassword = ref(false)
+const ratingsLoading = ref(true)
 
 const user = ref<any>(null)
+const ratings = ref<any[]>([])
+const averageRating = ref(0)
+
 const editForm = ref({
   name: '',
   telephone: '',
@@ -105,6 +131,22 @@ const passwordForm = ref({
   confirmPassword: ''
 })
 
+const loadRatings = async (userId: number) => {
+  ratingsLoading.value = true
+  try {
+    const [ratingsResponse, averageResponse] = await Promise.all([
+      ratingsService.getByUser(userId),
+      ratingsService.getAverage(userId),
+    ])
+    ratings.value = ratingsResponse.data
+    averageRating.value = averageResponse.data.average
+  } catch (error) {
+    console.error('Error al cargar calificaciones:', error)
+  } finally {
+    ratingsLoading.value = false
+  }
+}
+
 onMounted(async () => {
   try {
     const response = await userService.getProfile()
@@ -114,6 +156,8 @@ onMounted(async () => {
       telephone: user.value.telephone || '',
       address: user.value.address || ''
     }
+
+    await loadRatings(user.value.id)
   } catch (error) {
     console.error('Error al cargar perfil:', error)
     router.push('/login')
@@ -130,7 +174,6 @@ const updateProfile = async () => {
     user.value.telephone = editForm.value.telephone
     user.value.address = editForm.value.address
     
-    // Actualizar localStorage
     const storedUser = JSON.parse(localStorage.getItem('user') || '{}')
     storedUser.name = editForm.value.name
     localStorage.setItem('user', JSON.stringify(storedUser))
@@ -172,6 +215,15 @@ const changePassword = async () => {
     isChangingPassword.value = false
   }
 }
+
+const formatDate = (date: string) => {
+  if (!date) return 'Fecha no disponible'
+  return new Date(date).toLocaleDateString('es-ES', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  })
+}
 </script>
 
 <style scoped>
@@ -188,8 +240,14 @@ const changePassword = async () => {
 
 .loading-state {
   text-align: center;
-  padding: 4rem;
+  padding: 2rem;
   color: #64748b;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 2rem;
+  color: #94a3b8;
 }
 
 .profile-content {
@@ -324,5 +382,46 @@ const changePassword = async () => {
 .btn-password:disabled {
   background-color: #94a3b8;
   cursor: not-allowed;
+}
+
+.ratings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.rating-item {
+  background: #f8fafc;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.rating-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.rating-user {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.rating-score {
+  font-weight: bold;
+  color: #eab308;
+}
+
+.rating-comment {
+  margin: 0.5rem 0;
+  color: #475569;
+  font-size: 0.9rem;
+}
+
+.rating-date {
+  font-size: 0.75rem;
+  color: #94a3b8;
 }
 </style>
