@@ -1,151 +1,243 @@
 <template>
   <div class="postulations-wrapper">
-    <header class="postulations-header">
-      <div class="welcome-text">
-        <h1>Mis Postulaciones</h1>
-        <p>Revisa el estado de las tareas a las que te has postulado.</p>
-      </div>
-    </header>
+    <div class="postulations-header">
+      <h1>Mis Postulaciones</h1>
+      <p>Aquí puedes ver todas las tareas a las que te has postulado.</p>
+    </div>
 
-    <section class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-icon bg-blue"><i class="pi pi-send"></i></div>
-        <div class="stat-info">
-          <h3>{{ postulations.length }}</h3>
-          <p>Postulaciones Enviadas</p>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon bg-yellow"><i class="pi pi-clock"></i></div>
-        <div class="stat-info">
-          <h3>{{ pendingCount }}</h3>
-          <p>Pendientes</p>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon bg-green"><i class="pi pi-check-circle"></i></div>
-        <div class="stat-info">
-          <h3>{{ acceptedCount }}</h3>
-          <p>Aceptadas</p>
-        </div>
-      </div>
-    </section>
+    <!-- Tabs para cambiar entre vistas -->
+    <div class="tabs">
+      <button 
+        class="tab-btn" 
+        :class="{ active: activeTab === 'mis-postulaciones' }"
+        @click="activeTab = 'mis-postulaciones'"
+      >
+        Mis Postulaciones
+      </button>
+      <button 
+        class="tab-btn" 
+        :class="{ active: activeTab === 'postulaciones-recibidas' }"
+        @click="activeTab = 'postulaciones-recibidas'"
+      >
+        Postulaciones Recibidas
+      </button>
+    </div>
 
-    <section class="postulations-section">
-      <div class="section-header">
-        <h2>Historial de Postulaciones</h2>
+    <!-- Mis Postulaciones (como trabajador) -->
+    <div v-if="activeTab === 'mis-postulaciones'">
+      <div v-if="isLoading" class="loading-state">
+        <p>Cargando postulaciones...</p>
       </div>
 
-      <div class="task-list">
-        <div v-if="isLoading" class="loading-state">
-          <p>Cargando postulaciones...</p>
-        </div>
+      <div v-else-if="myPostulations.length === 0" class="empty-state">
+        <i class="pi pi-inbox"></i>
+        <p>No te has postulado a ninguna tarea aún.</p>
+        <button class="btn-browse" @click="goToCatalog">Explorar Tareas</button>
+      </div>
 
-        <div v-else-if="postulations.length === 0" class="empty-state">
-          <p>Aún no te has postulado a ninguna tarea.</p>
-        </div>
-
-        <div v-for="postulation in postulations" :key="postulation.id" class="task-item">
-          <div class="task-info">
-            <h4>{{ postulation.task.title }}</h4>
-            <p><i class="pi pi-user"></i> Empleador: {{ postulation.user.name }}</p>
-            <p><i class="pi pi-calendar"></i> Postulado el {{ formatDate(postulation.createdAt) }}</p>
-          </div>
-          <div class="task-item__right">
+      <div v-else class="postulations-grid">
+        <div 
+          v-for="postulation in myPostulations" 
+          :key="postulation.id" 
+          class="postulation-card"
+        >
+          <div class="card-header">
+            <h3>{{ postulation.task?.title || 'Tarea eliminada' }}</h3>
             <span class="status-badge" :class="getStatusClass(postulation.status)">
-              {{ getStatusLabel(postulation.status) }}
+              {{ postulation.status }}
             </span>
-            <button
-              v-if="postulation.status === 'PENDING'"
-              class="btn-text-danger"
+          </div>
+
+          <div class="card-body">
+            <p class="task-description">{{ postulation.task?.description || 'Descripción no disponible' }}</p>
+            <div class="task-details">
+              <span><i class="pi pi-tag"></i> {{ postulation.task?.category || 'Sin categoría' }}</span>
+              <span><i class="pi pi-map-marker"></i> {{ postulation.task?.location || 'Sin ubicación' }}</span>
+              <span><i class="pi pi-dollar"></i> ${{ postulation.task?.amount || 0 }}</span>
+            </div>
+            <p class="postulation-date">Postulado el: {{ formatDate(postulation.applicationDate) }}</p>
+          </div>
+
+          <div class="card-footer">
+            <button 
+              class="btn-detail" 
+              @click="goToTaskDetail(postulation.taskId)"
+            >
+              Ver Tarea
+            </button>
+            <button 
+              v-if="postulation.status === 'pendiente'"
+              class="btn-cancel" 
               @click="cancelPostulation(postulation.id)"
             >
-              Retirar
+              Cancelar Postulación
             </button>
           </div>
         </div>
       </div>
-    </section>
+    </div>
+
+    <!-- Postulaciones Recibidas (como empleador) -->
+    <div v-if="activeTab === 'postulaciones-recibidas'">
+      <div v-if="isLoading" class="loading-state">
+        <p>Cargando postulaciones recibidas...</p>
+      </div>
+
+      <div v-else-if="receivedPostulations.length === 0" class="empty-state">
+        <i class="pi pi-users"></i>
+        <p>No has recibido postulaciones en tus tareas aún.</p>
+      </div>
+
+      <div v-else class="postulations-grid">
+        <div 
+          v-for="postulation in receivedPostulations" 
+          :key="postulation.id" 
+          class="postulation-card"
+        >
+          <div class="card-header">
+            <h3>{{ postulation.task?.title || 'Tarea eliminada' }}</h3>
+            <span class="status-badge" :class="getStatusClass(postulation.status)">
+              {{ postulation.status }}
+            </span>
+          </div>
+
+          <div class="card-body">
+            <p class="task-description">{{ postulation.task?.description || 'Descripción no disponible' }}</p>
+            <div class="task-details">
+              <span><i class="pi pi-tag"></i> {{ postulation.task?.category || 'Sin categoría' }}</span>
+              <span><i class="pi pi-map-marker"></i> {{ postulation.task?.location || 'Sin ubicación' }}</span>
+              <span><i class="pi pi-dollar"></i> ${{ postulation.task?.amount || 0 }}</span>
+            </div>
+            <p class="postulation-date">
+              <strong>Postulante:</strong> {{ postulation.user?.name || 'Usuario desconocido' }}
+            </p>
+            <p class="postulation-date">Postulado el: {{ formatDate(postulation.applicationDate) }}</p>
+          </div>
+
+          <div class="card-footer">
+            <button 
+              class="btn-detail" 
+              @click="goToTaskDetail(postulation.taskId)"
+            >
+              Ver Tarea
+            </button>
+            <button 
+              v-if="postulation.status === 'pendiente'"
+              class="btn-accept" 
+              @click="updatePostulationStatus(postulation.id, 'aceptada')"
+            >
+              Aceptar
+            </button>
+            <button 
+              v-if="postulation.status === 'pendiente'"
+              class="btn-reject" 
+              @click="updatePostulationStatus(postulation.id, 'rechazada')"
+            >
+              Rechazar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import { postulationService } from '../services/postulations.service';
-import { useAuthStore } from '../stores/auth.store';
+import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { postulationService } from '../services/postulations.service'
 
-const router = useRouter();
-const authStore = useAuthStore();
-const isLoading = ref(false);
-const postulations = ref<any[]>([]);
+const router = useRouter()
+const isLoading = ref(true)
+const activeTab = ref('mis-postulaciones')
+const allPostulations = ref<any[]>([])
+const myPostulations = ref<any[]>([])
+const receivedPostulations = ref<any[]>([])
 
-const pendingCount = computed(
-  () => postulations.value.filter((p) => p.status === 'PENDING').length
-);
-const acceptedCount = computed(
-  () => postulations.value.filter((p) => p.status === 'ACCEPTED').length
-);
+const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
+
+onMounted(async () => {
+  if (!currentUser.id) {
+    router.push('/login')
+    return
+  }
+
+  try {
+    // Obtener todas las postulaciones del usuario (como postulante)
+    const myResponse = await postulationService.getByUser(currentUser.id)
+    myPostulations.value = myResponse.data
+
+    // Obtener todas las postulaciones de tareas del usuario (como empleador)
+    const allResponse = await postulationService.getAll()
+    receivedPostulations.value = allResponse.data.filter(
+      (p: any) => p.task?.userId === currentUser.id
+    )
+  } catch (error) {
+    console.error('Error al cargar postulaciones:', error)
+  } finally {
+    isLoading.value = false
+  }
+})
+
+const goToCatalog = () => {
+  router.push('/tasks')
+}
+
+const goToTaskDetail = (taskId: number) => {
+  router.push(`/tasks/${taskId}`)
+}
+
+const cancelPostulation = async (id: number) => {
+  if (!confirm('¿Estás seguro de cancelar esta postulación?')) return
+
+  try {
+    await postulationService.delete(id)
+    myPostulations.value = myPostulations.value.filter(p => p.id !== id)
+    alert('Postulación cancelada exitosamente')
+  } catch (error: any) {
+    alert(error.response?.data?.message || 'Error al cancelar la postulación')
+  }
+}
+
+const updatePostulationStatus = async (id: number, status: string) => {
+  const action = status === 'aceptada' ? 'aceptar' : 'rechazar'
+  if (!confirm(`¿Estás seguro de ${action} esta postulación?`)) return
+
+  try {
+    await postulationService.update(id, { status })
+    
+    // Actualizar localmente
+    const index = receivedPostulations.value.findIndex(p => p.id === id)
+    if (index !== -1) {
+      receivedPostulations.value[index].status = status
+    }
+    
+    alert(`Postulación ${status === 'aceptada' ? 'aceptada' : 'rechazada'} exitosamente`)
+  } catch (error: any) {
+    alert(error.response?.data?.message || `Error al ${status === 'aceptada' ? 'aceptar' : 'rechazar'} la postulación`)
+  }
+}
+
+const getStatusClass = (status: string) => {
+  const classes: Record<string, string> = {
+    'pendiente': 'status-pending',
+    'aceptada': 'status-accepted',
+    'rechazada': 'status-rejected',
+    'cancelada': 'status-cancelled'
+  }
+  return classes[status] || 'status-pending'
+}
 
 const formatDate = (date: string) => {
-  if (!date) return 'Fecha no disponible';
+  if (!date) return 'Fecha no disponible'
   return new Date(date).toLocaleDateString('es-ES', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
-  });
-};
-
-const getStatusClass = (status: string) => {
-  const classes: Record<string, string> = {
-    'PENDING': 'status-progress',
-    'ACCEPTED': 'status-finished',
-    'REJECTED': 'status-cancelled',
-  };
-  return classes[status] || 'status-progress';
-};
-
-const getStatusLabel = (status: string) => {
-  const labels: Record<string, string> = {
-    'PENDING': 'Pendiente',
-    'ACCEPTED': 'Aceptada',
-    'REJECTED': 'Rechazada',
-  };
-  return labels[status] || status;
-};
-
-const loadPostulations = async () => {
-  if (!authStore.user?.id) {
-    router.push('/login');
-    return;
-  }
-
-  isLoading.value = true;
-  try {
-    const response = await postulationService.getByUser(authStore.user.id);
-    postulations.value = response.data;
-  } catch (error) {
-    console.error('Error al cargar postulaciones:', error);
-  } finally {
-    isLoading.value = false;
-  }
-};
-
-const cancelPostulation = async (id: number) => {
-  if (!confirm('¿Estás seguro de retirar tu postulación?')) return;
-
-  try {
-    await postulationService.delete(id);
-    await loadPostulations();
-    alert('Postulación retirada correctamente');
-  } catch (error: any) {
-    alert(error.response?.data?.message || 'Error al retirar la postulación');
-  }
-};
-
-onMounted(() => {
-  loadPostulations();
-});
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
 </script>
 
 <style scoped>
@@ -159,120 +251,128 @@ onMounted(() => {
   margin-bottom: 2rem;
 }
 
-.welcome-text h1 {
+.postulations-header h1 {
   margin: 0 0 0.5rem 0;
   color: #1e293b;
+  font-size: 2rem;
 }
 
-.welcome-text p {
+.postulations-header p {
   margin: 0;
   color: #64748b;
 }
 
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 2.5rem;
-}
-
-.stat-card {
-  background: white;
-  padding: 1.5rem;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+/* Tabs */
+.tabs {
   display: flex;
-  align-items: center;
-  gap: 1.5rem;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  border-bottom: 2px solid #e2e8f0;
 }
 
-.stat-icon {
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.5rem;
+.tab-btn {
+  background: none;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  transition: all 0.2s;
 }
 
-.bg-blue { background-color: #eff6ff; color: #3b82f6; }
-.bg-green { background-color: #f0fdf4; color: #22c55e; }
-.bg-yellow { background-color: #fefce8; color: #eab308; }
-
-.stat-info h3 {
-  margin: 0;
-  font-size: 1.75rem;
+.tab-btn:hover {
   color: #1e293b;
 }
 
-.stat-info p {
-  margin: 0;
-  color: #64748b;
-  font-size: 0.875rem;
-  font-weight: 500;
+.tab-btn.active {
+  color: #3b82f6;
+  border-bottom-color: #3b82f6;
 }
 
-.postulations-section {
+.loading-state {
+  text-align: center;
+  padding: 4rem;
+  color: #64748b;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 4rem;
   background: white;
   border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
-.section-header {
+.empty-state i {
+  font-size: 4rem;
+  color: #cbd5e1;
+  margin-bottom: 1rem;
+}
+
+.empty-state p {
+  color: #64748b;
+  font-size: 1.1rem;
+  margin-bottom: 1.5rem;
+}
+
+.btn-browse {
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  padding: 0.75rem 2rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-browse:hover {
+  background-color: #2563eb;
+}
+
+.postulations-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .postulations-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.postulation-card {
+  background: white;
+  border-radius: 12px;
   padding: 1.5rem;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.section-header h2 {
-  margin: 0;
-  font-size: 1.25rem;
-  color: #0f172a;
-}
-
-.task-list {
-  padding: 1rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  border: 1px solid #e2e8f0;
+  transition: transform 0.2s, box-shadow 0.2s;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
 }
 
-.task-item {
+.postulation-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+}
+
+.card-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 1rem;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  transition: border-color 0.2s;
-  flex-wrap: wrap;
-  gap: 0.75rem;
+  align-items: flex-start;
+  margin-bottom: 1rem;
 }
 
-.task-item:hover {
-  border-color: #cbd5e1;
-}
-
-.task-info h4 {
-  margin: 0 0 0.5rem 0;
-  color: #334155;
-  font-size: 1rem;
-}
-
-.task-info p {
+.card-header h3 {
   margin: 0;
-  color: #64748b;
-  font-size: 0.875rem;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.task-item__right {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
+  font-size: 1.1rem;
+  color: #1e293b;
+  flex: 1;
+  margin-right: 1rem;
 }
 
 .status-badge {
@@ -283,30 +383,131 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-.status-progress { background-color: #fef3c7; color: #b45309; }
-.status-finished { background-color: #dcfce7; color: #166534; }
-.status-cancelled { background-color: #fee2e2; color: #b91c1c; }
+.status-pending {
+  background-color: #fef3c7;
+  color: #b45309;
+}
 
-.btn-text-danger {
-  background: none;
-  border: none;
+.status-accepted {
+  background-color: #dcfce7;
+  color: #166534;
+}
+
+.status-rejected {
+  background-color: #fee2e2;
   color: #b91c1c;
+}
+
+.status-cancelled {
+  background-color: #f1f5f9;
+  color: #64748b;
+}
+
+.card-body {
+  flex: 1;
+  margin-bottom: 1rem;
+}
+
+.task-description {
+  color: #475569;
+  font-size: 0.9rem;
+  margin: 0 0 0.75rem 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.task-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.task-details span {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.postulation-date {
+  margin: 0;
   font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.card-footer {
+  display: flex;
+  gap: 0.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #f1f5f9;
+  flex-wrap: wrap;
+}
+
+.btn-detail {
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
-  text-decoration: underline;
-  padding: 0;
+  transition: background-color 0.2s;
+  flex: 1;
 }
 
-.btn-text-danger:hover {
-  color: #991b1b;
+.btn-detail:hover {
+  background-color: #2563eb;
 }
 
-.loading-state,
-.empty-state {
-  text-align: center;
-  padding: 2rem;
-  color: #94a3b8;
-  font-style: italic;
+.btn-cancel {
+  background-color: #ef4444;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  flex: 1;
+}
+
+.btn-cancel:hover {
+  background-color: #dc2626;
+}
+
+.btn-accept {
+  background-color: #22c55e;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  flex: 1;
+}
+
+.btn-accept:hover {
+  background-color: #16a34a;
+}
+
+.btn-reject {
+  background-color: #ef4444;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  flex: 1;
+}
+
+.btn-reject:hover {
+  background-color: #dc2626;
 }
 </style>
