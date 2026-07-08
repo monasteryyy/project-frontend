@@ -13,30 +13,58 @@
     <p class="task-description">{{ description }}</p>
     
     <div class="task-footer">
-      <span class="date-info"><i class="pi pi-calendar"></i> {{ date }}</span>
-      <BaseButton 
-        label="Ver Detalles" 
-        severity="info" 
-        @click="$emit('view-details', id)" 
-      />
+      <span class="date-info"><i class="pi pi-calendar"></i> {{ formatDate(date) }}</span>
+      <div class="task-actions">
+        <BaseButton 
+          label="Ver Detalles" 
+          severity="info" 
+          @click="$emit('view-details', id)" 
+        />
+        <BaseButton 
+          v-if="isOwner"
+          label="Eliminar" 
+          severity="danger" 
+          @click="$emit('delete-task', id)" 
+        />
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import BaseButton from './BaseButton.vue'
 
-defineProps<{
-  id: string | number
+const props = defineProps<{
+  id: number
   title: string
   description: string
-  price: number | string
+  price: number
   location: string
   category: string
   date: string
+  userId: number
 }>()
 
-defineEmits(['view-details'])
+defineEmits<{
+  (e: 'view-details', id: number): void
+  (e: 'delete-task', id: number): void
+}>()
+
+const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
+
+const isOwner = computed(() => {
+  return props.userId === currentUser.id
+})
+
+const formatDate = (date: string) => {
+  if (!date) return 'Fecha no disponible'
+  return new Date(date).toLocaleDateString('es-ES', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  })
+}
 </script>
 
 <style scoped>
@@ -105,12 +133,19 @@ defineEmits(['view-details'])
 }
 
 .task-footer {
-  margin-top: auto; /* Empuja el footer hacia abajo */
+  margin-top: auto;
   padding-top: 1rem;
   border-top: 1px solid #f1f5f9;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.task-actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 .date-info {

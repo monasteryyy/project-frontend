@@ -37,28 +37,32 @@
       </div>
 
       <div class="task-list">
+        <div v-if="isLoading" class="loading-state">
+          <p>Cargando postulaciones...</p>
+        </div>
+
+        <div v-else-if="postulations.length === 0" class="empty-state">
+          <p>Aún no te has postulado a ninguna tarea.</p>
+        </div>
+
         <div v-for="postulation in postulations" :key="postulation.id" class="task-item">
           <div class="task-info">
-            <h4>{{ postulation.taskTitle }}</h4>
-            <p><i class="pi pi-user"></i> Empleador: {{ postulation.employer }}</p>
-            <p><i class="pi pi-calendar"></i> Postulado el {{ postulation.appliedDate }}</p>
+            <h4>{{ postulation.task.title }}</h4>
+            <p><i class="pi pi-user"></i> Empleador: {{ postulation.user.name }}</p>
+            <p><i class="pi pi-calendar"></i> Postulado el {{ formatDate(postulation.createdAt) }}</p>
           </div>
           <div class="task-item__right">
-            <span class="status-badge" :class="postulation.statusClass">
-              {{ postulation.statusLabel }}
+            <span class="status-badge" :class="getStatusClass(postulation.status)">
+              {{ getStatusLabel(postulation.status) }}
             </span>
             <button
-              v-if="postulation.status === 'pending'"
+              v-if="postulation.status === 'PENDING'"
               class="btn-text-danger"
-              @click="$emit('cancel-postulation', postulation.id)"
+              @click="cancelPostulation(postulation.id)"
             >
               Retirar
             </button>
           </div>
-        </div>
-
-        <div v-if="postulations.length === 0" class="empty-state">
-          <p>Aún no te has postulado a ninguna tarea.</p>
         </div>
       </div>
     </section>
@@ -66,60 +70,82 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { ref, computed, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
+import { postulationService } from '../services/postulations.service';
+import { useAuthStore } from '../stores/auth.store';
 
-// TEMPORAL: mover a src/types/postulation.types.ts cuando Tomás lo publique
-interface Postulation {
-  id: number
-  taskTitle: string
-  employer: string
-  appliedDate: string
-  status: 'pending' | 'accepted' | 'rejected'
-  statusLabel: string
-  statusClass: string
-}
-
-defineEmits<{
-  'cancel-postulation': [id: number]
-}>()
-
-// TEMPORAL: mock data, reemplazar con postulations.store.ts
-const postulations = ref<Postulation[]>([
-  {
-    id: 1,
-    taskTitle: 'Pasear a mis dos perros',
-    employer: 'Carlos Gómez',
-    appliedDate: '05 Oct 2023',
-    status: 'accepted',
-    statusLabel: 'Aceptada',
-    statusClass: 'status-finished',
-  },
-  {
-    id: 2,
-    taskTitle: 'Ayuda con mudanza',
-    employer: 'Ana Torres',
-    appliedDate: '08 Oct 2023',
-    status: 'pending',
-    statusLabel: 'Pendiente',
-    statusClass: 'status-progress',
-  },
-  {
-    id: 3,
-    taskTitle: 'Clases de matemáticas',
-    employer: 'Luis Peña',
-    appliedDate: '02 Oct 2023',
-    status: 'rejected',
-    statusLabel: 'Rechazada',
-    statusClass: 'status-cancelled',
-  },
-])
+const router = useRouter();
+const authStore = useAuthStore();
+const isLoading = ref(false);
+const postulations = ref<any[]>([]);
 
 const pendingCount = computed(
-  () => postulations.value.filter((p) => p.status === 'pending').length
-)
+  () => postulations.value.filter((p) => p.status === 'PENDING').length
+);
 const acceptedCount = computed(
-  () => postulations.value.filter((p) => p.status === 'accepted').length
-)
+  () => postulations.value.filter((p) => p.status === 'ACCEPTED').length
+);
+
+const formatDate = (date: string) => {
+  if (!date) return 'Fecha no disponible';
+  return new Date(date).toLocaleDateString('es-ES', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+};
+
+const getStatusClass = (status: string) => {
+  const classes: Record<string, string> = {
+    'PENDING': 'status-progress',
+    'ACCEPTED': 'status-finished',
+    'REJECTED': 'status-cancelled',
+  };
+  return classes[status] || 'status-progress';
+};
+
+const getStatusLabel = (status: string) => {
+  const labels: Record<string, string> = {
+    'PENDING': 'Pendiente',
+    'ACCEPTED': 'Aceptada',
+    'REJECTED': 'Rechazada',
+  };
+  return labels[status] || status;
+};
+
+const loadPostulations = async () => {
+  if (!authStore.user?.id) {
+    router.push('/login');
+    return;
+  }
+
+  isLoading.value = true;
+  try {
+    const response = await postulationService.getByUser(authStore.user.id);
+    postulations.value = response.data;
+  } catch (error) {
+    console.error('Error al cargar postulaciones:', error);
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+const cancelPostulation = async (id: number) => {
+  if (!confirm('¿Estás seguro de retirar tu postulación?')) return;
+
+  try {
+    await postulationService.delete(id);
+    await loadPostulations();
+    alert('Postulación retirada correctamente');
+  } catch (error: any) {
+    alert(error.response?.data?.message || 'Error al retirar la postulación');
+  }
+};
+
+onMounted(() => {
+  loadPostulations();
+});
 </script>
 
 <style scoped>
@@ -272,6 +298,11 @@ const acceptedCount = computed(
   padding: 0;
 }
 
+.btn-text-danger:hover {
+  color: #991b1b;
+}
+
+.loading-state,
 .empty-state {
   text-align: center;
   padding: 2rem;

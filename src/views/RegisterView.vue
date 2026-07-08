@@ -24,6 +24,14 @@
         />
 
         <BaseInput
+          id="telephone"
+          label="TELÉFONO"
+          type="text"
+          v-model="telephone"
+          placeholder="3001234567"
+        />
+
+        <BaseInput
           id="password"
           label="CONTRASEÑA"
           type="password"
@@ -79,23 +87,26 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import BaseInput from '../components/BaseInput.vue'
 import BaseButton from '../components/BaseButton.vue'
+import { authService } from '../services/auth.service'
+import { useAuthStore } from '../stores/auth.store';
 
+const router = useRouter()
 
 const fullName = ref('')
 const email = ref('')
+const telephone = ref('')
 const password = ref('')
 const confirmPassword = ref('')
 const acceptTerms = ref(false)
 const isLoading = ref(false)
 
-
 const hasMinLength = computed(() => password.value.length >= 8)
 const hasLetter = computed(() => /[a-zA-Z]/.test(password.value))
 const hasNumber = computed(() => /\d/.test(password.value))
 const hasSymbol = computed(() => /[^\w\s]|_/.test(password.value))
-
 
 const isFormValid = computed(() => {
   return hasMinLength.value && 
@@ -104,20 +115,48 @@ const isFormValid = computed(() => {
          hasSymbol.value &&
          password.value === confirmPassword.value &&
          acceptTerms.value &&
-         fullName.value !== '' &&
-         email.value !== ''
+         fullName.value.trim() !== '' &&
+         email.value.trim() !== '' &&
+         telephone.value.trim() !== ''
 })
 
-const handleRegister = () => {
+const handleRegister = async () => {
+  console.log('✅ Botón de registro presionado')
+  console.log('📤 Datos a enviar:', {
+    name: fullName.value,
+    email: email.value,
+    telephone: telephone.value,
+    password: password.value,
+  })
+
+  if (!isFormValid.value) {
+    console.warn('⚠️ El formulario no es válido, no se puede registrar')
+    return
+  }
+
   isLoading.value = true
-  setTimeout(() => {
-    alert('¡Registro visualmente completado! Eduin enviará esto al backend.')
+  try {
+    const response = await authService.register({
+      name: fullName.value,
+      email: email.value,
+      telephone: telephone.value,
+      password: password.value,
+      address: 'Calle 123',
+    })
+    
+    console.log('✅ Respuesta del backend:', response.data)
+    alert('¡Registro exitoso! Ahora inicia sesión.')
+    router.push('/login')
+  } catch (error: any) {
+    console.error('❌ Error en el registro:', error)
+    alert(error.response?.data?.message || 'Error al registrar usuario')
+  } finally {
     isLoading.value = false
-  }, 1500)
+  }
 }
 
 const goToLogin = () => {
-  alert('Navegando al Login...')
+  router.push('/login')
 }
 </script>
 

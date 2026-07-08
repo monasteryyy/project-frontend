@@ -2,17 +2,14 @@
   <div class="app-layout">
     <div class="main-content">
       <main class="view-container">
-        <HomeView  /> 
+        <router-view />
       </main>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import AppNavbar from './components/AppNavbar.vue'
-
-
-import HomeView from './views/HomeView.vue'
+// No necesitamos importar nada, router-view se encarga
 </script>
 
 <style scoped>

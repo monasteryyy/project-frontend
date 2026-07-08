@@ -35,8 +35,8 @@
             <label for="paymentType">Tipo de remuneración <span class="required">*</span></label>
             <select id="paymentType" v-model="form.paymentType" required>
               <option value="" disabled>Selecciona el tipo</option>
-              <option value="Por hora">Por hora</option>
-              <option value="Por día">Por día</option>
+              <option value="HOUR">Por hora</option>
+              <option value="DAY">Por día</option>
             </select>
           </div>
 
@@ -75,8 +75,8 @@
           ></textarea>
         </div>
 
-        <button type="submit" class="btn-submit">
-          Publicar Tarea
+        <button type="submit" class="btn-submit" :disabled="isLoading">
+          {{ isLoading ? 'Publicando...' : 'Publicar Tarea' }}
         </button>
       </form>
     </div>
@@ -85,29 +85,96 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { taskService } from '../services/tasks.service'
 
+const router = useRouter()
 
 const form = ref({
   title: '',
   category: '',
   paymentType: '',
-  amount: null,
+  amount: null as number | null,
   location: '',
   description: ''
 })
 
-const submitTask = () => {
+const isLoading = ref(false)
 
-  alert(`¡Tarea "${form.value.title}" publicada con éxito!`)
+const submitTask = async () => {
+  console.log('✅ Botón de publicar presionado')
   
+  // Validar que el usuario esté autenticado
+  const user = JSON.parse(localStorage.getItem('user') || '{}')
+  const userId = user.id
 
-  form.value = {
-    title: '',
-    category: '',
-    paymentType: '',
-    amount: null,
-    location: '',
-    description: ''
+  if (!userId) {
+    alert('Debes iniciar sesión para publicar una tarea')
+    router.push('/login')
+    return
+  }
+
+  // Validar campos
+  if (!form.value.title?.trim()) {
+    alert('El título es obligatorio')
+    return
+  }
+  if (!form.value.category?.trim()) {
+    alert('La categoría es obligatoria')
+    return
+  }
+  if (!form.value.paymentType) {
+    alert('El tipo de remuneración es obligatorio')
+    return
+  }
+  if (!form.value.amount || form.value.amount <= 0) {
+    alert('El monto debe ser mayor a 0')
+    return
+  }
+  if (!form.value.location?.trim()) {
+    alert('La ubicación es obligatoria')
+    return
+  }
+  if (!form.value.description?.trim()) {
+    alert('La descripción es obligatoria')
+    return
+  }
+
+  const taskData = {
+    title: form.value.title.trim(),
+    description: form.value.description.trim(),
+    category: form.value.category.trim(),
+    location: form.value.location.trim(),
+    paymentType: form.value.paymentType,
+    amount: Number(form.value.amount),
+    userId: userId
+  }
+
+  console.log('📤 Enviando tarea:', taskData)
+
+  isLoading.value = true
+  try {
+    const response = await taskService.create(taskData)
+    console.log('✅ Tarea creada:', response.data)
+
+    alert('¡Tarea publicada con éxito!')
+    
+    // Limpiar formulario
+    form.value = {
+      title: '',
+      category: '',
+      paymentType: '',
+      amount: null,
+      location: '',
+      description: ''
+    }
+    
+    router.push('/dashboard')
+  } catch (error: any) {
+    console.error('❌ Error al publicar:', error)
+    alert(error.response?.data?.message || 'Error al publicar la tarea')
+  } finally {
+    isLoading.value = false
   }
 }
 </script>
@@ -221,7 +288,12 @@ textarea {
   transition: background-color 0.2s;
 }
 
-.btn-submit:hover {
+.btn-submit:hover:not(:disabled) {
   background-color: #059669;
+}
+
+.btn-submit:disabled {
+  background-color: #94a3b8;
+  cursor: not-allowed;
 }
 </style>

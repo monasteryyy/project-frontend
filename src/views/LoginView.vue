@@ -7,7 +7,6 @@
       </div>
 
       <form @submit.prevent="handleLogin" class="login-form">
-        
         <BaseInput
           id="email"
           label="Correo Electrónico"
@@ -23,10 +22,6 @@
           v-model="password"
           placeholder="••••••••"
         />
-
-        <div class="forgot-password">
-          <a href="#">¿Olvidaste tu contraseña?</a>
-        </div>
 
         <BaseButton
           label="Entrar"
@@ -44,47 +39,52 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-
+import { useRouter } from 'vue-router'
 import BaseInput from '../components/BaseInput.vue'
 import BaseButton from '../components/BaseButton.vue'
+import { authService } from '../services/auth.service'
 
+const router = useRouter()
 const email = ref('')
 const password = ref('')
 const isLoading = ref(false)
 
+const handleLogin = async () => {
+  console.log('✅ Botón de login presionado')
+  console.log('📤 Datos:', { email: email.value, password: password.value })
 
-const handleLogin = () => {
   isLoading.value = true
-  
-
-  setTimeout(() => {
-    console.log('Datos listos para enviar al backend:', { 
-      email: email.value, 
-      password: password.value 
-    })
+  try {
+    const response = await authService.login(email.value, password.value)
+    console.log('✅ Respuesta del backend:', response.data)
     
-    alert('¡Maquetación del Login lista! (Acá Eduin conectará el token JWT)')
+    const { token, user } = response.data
+    localStorage.setItem('token', token)
+    localStorage.setItem('user', JSON.stringify(user))
+    
+    console.log('✅ Token guardado:', localStorage.getItem('token'))
+    
+    router.push('/dashboard')
+  } catch (error: any) {
+    console.error('❌ Error en login:', error)
+    alert(error.response?.data?.message || 'Error al iniciar sesión')
+  } finally {
     isLoading.value = false
-    
-
-  }, 1500)
+  }
 }
 
-
 const goToRegister = () => {
-  alert('Navegar a la vista de Registro')
-
+  router.push('/register')
 }
 </script>
 
 <style scoped>
-
 .login-wrapper {
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background-color: #f3f4f6; 
+  background-color: #f3f4f6;
   padding: 1rem;
 }
 
@@ -120,22 +120,6 @@ const goToRegister = () => {
   gap: 1rem;
 }
 
-.forgot-password {
-  text-align: right;
-  margin-top: -0.5rem;
-  margin-bottom: 0.5rem;
-}
-
-.forgot-password a {
-  font-size: 0.75rem;
-  color: #3b82f6;
-  text-decoration: none;
-}
-
-.forgot-password a:hover {
-  text-decoration: underline;
-}
-
 .login-footer {
   margin-top: 1.5rem;
   text-align: center;
@@ -147,9 +131,5 @@ const goToRegister = () => {
   color: #3b82f6;
   font-weight: 600;
   text-decoration: none;
-}
-
-.login-footer a:hover {
-  text-decoration: underline;
 }
 </style>

@@ -1,13 +1,15 @@
 <template>
   <div class="detail-wrapper">
     <div class="detail-container">
-      
-      <button class="btn-back">
+      <button class="btn-back" @click="goBack">
         <i class="pi pi-arrow-left"></i> Volver al catálogo
       </button>
 
-      <div class="content-grid">
-        
+      <div v-if="isLoading" class="loading-container">
+        <p>Cargando tarea...</p>
+      </div>
+
+      <div v-else class="content-grid">
         <main class="task-info-card">
           <div class="task-header">
             <div class="tags">
@@ -15,7 +17,7 @@
               <span class="tag-payment">{{ task.paymentType }}</span>
             </div>
             <h1 class="task-title">{{ task.title }}</h1>
-            <p class="task-date">Publicado el {{ task.publishDate }}</p>
+            <p class="task-date">Publicado el {{ formatDate(task.createdAt) }}</p>
           </div>
 
           <div class="task-body">
@@ -26,9 +28,36 @@
               <h3>Detalles Adicionales</h3>
               <ul>
                 <li><i class="pi pi-map-marker"></i> <strong>Ubicación:</strong> {{ task.location }}</li>
-                <li><i class="pi pi-calendar"></i> <strong>Fecha requerida:</strong> {{ task.requiredDate }}</li>
-                <li><i class="pi pi-clock"></i> <strong>Duración estimada:</strong> {{ task.estimatedDuration }}</li>
+                <li><i class="pi pi-tag"></i> <strong>Estado:</strong> {{ task.status || 'Creada' }}</li>
               </ul>
+            </div>
+
+            <div class="status-section" v-if="isOwner">
+              <h3>Cambiar Estado</h3>
+              <div class="status-buttons">
+                <button 
+                  v-for="status in availableStatuses" 
+                  :key="status"
+                  class="status-btn"
+                  :class="getStatusClass(status)"
+                  :disabled="task.status === status || isUpdating"
+                  @click="changeStatus(status)"
+                >
+                  {{ status }}
+                </button>
+              </div>
+            </div>
+
+            <div class="history-section" v-if="history.length > 0">
+              <h3>Historial de Cambios</h3>
+              <div class="history-list">
+                <div v-for="entry in history" :key="entry.id" class="history-item">
+                  <span class="history-status old">{{ entry.oldStatus }}</span>
+                  <i class="pi pi-arrow-right"></i>
+                  <span class="history-status new">{{ entry.newStatus }}</span>
+                  <span class="history-date">{{ formatDate(entry.changedAt) }}</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -41,9 +70,9 @@
               class="btn-apply" 
               :class="{ 'is-applied': hasApplied }"
               @click="applyForTask"
-              :disabled="hasApplied"
+              :disabled="hasApplied || isApplying"
             >
-              {{ hasApplied ? 'Te has postulado' : 'Postularme a esta tarea' }}
+              {{ isApplying ? 'Postulando...' : hasApplied ? 'Te has postulado' : 'Postularme a esta tarea' }}
             </button>
           </div>
         </main>
@@ -74,47 +103,158 @@
             </div>
           </div>
         </aside>
-
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import RatingStars from '../components/RatingStars.vue'
+import { taskService } from '../services/tasks.service'
+import { postulationService } from '../services/postulations.service'
 
+const route = useRoute()
+const router = useRouter()
+
+const isLoading = ref(true)
+const isUpdating = ref(false)
+const isApplying = ref(false)
+const history = ref<any[]>([])
 
 const task = ref({
-  id: 1,
-  title: 'Pasear a mis dos perros',
-  category: 'Hogar',
-  paymentType: 'Por hora',
-  publishDate: '12 Octubre 2023',
-  description: 'Busco a una persona responsable, que le gusten los animales, para pasear a mis dos Golden Retrievers (Max y Luna) por el parque principal de la ciudad. Son perros muy dóciles, pero tienen mucha energía, así que requieren a alguien con buena condición física. Solo se necesita correa, yo proveo las bolsas para desechos.',
-  location: 'Zona Norte, Parque Central',
-  requiredDate: 'Sábados y Domingos en la mañana',
-  estimatedDuration: '2 horas',
-  amount: '15.000'
+  id: 0,
+  title: '',
+  category: '',
+  paymentType: '',
+  createdAt: '',
+  description: '',
+  location: '',
+  amount: 0,
+  status: '',
+  userId: 0
 })
 
 const employer = ref({
-  name: 'Carlos Gómez',
-  initials: 'CG',
+  name: 'Empleador',
+  initials: 'EM',
   rating: 4.5,
-  email: 'carlos.gomez@example.com',
-  phone: '+57 320 000 0000'
+  email: 'empleador@test.com',
+  phone: '+57 300 000 0000'
 })
 
-
 const hasApplied = ref(false)
+const isAccepted = ref(false)
+const availableStatuses = ['Creada', 'En Progreso', 'Finalizada', 'Cancelada']
 
-// ¡Cambia este valor a 'true' para ver cómo se revela el contacto!
-const isAccepted = ref(false) 
+const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
+const isOwner = computed(() => task.value.userId === currentUser.id)
 
-const applyForTask = () => {
-  hasApplied.value = true
-  alert('¡Te has postulado a esta tarea exitosamente!')
+const applyForTask = async () => {
+  if (!currentUser.id) {
+    alert('Debes iniciar sesión para postularte')
+    router.push('/login')
+    return
+  }
+
+  if (hasApplied.value) {
+    alert('Ya te has postulado a esta tarea')
+    return
+  }
+
+  if (!confirm('¿Quieres postularte a esta tarea?')) return
+
+  isApplying.value = true
+  try {
+    await postulationService.create({
+      taskId: task.value.id,
+      userId: currentUser.id,
+    })
+    hasApplied.value = true
+    alert('¡Te has postulado exitosamente!')
+  } catch (error: any) {
+    console.error('Error al postularse:', error)
+    alert(error.response?.data?.message || 'Error al postularse a la tarea')
+  } finally {
+    isApplying.value = false
+  }
+}
+
+onMounted(async () => {
+  const id = Number(route.params.id)
+  if (!id) {
+    router.push('/tasks')
+    return
+  }
+
+  try {
+    const response = await taskService.getOne(id)
+    task.value = response.data
+
+    const historyResponse = await taskService.getHistory(id)
+    history.value = historyResponse.data
+
+    if (currentUser.id) {
+      const postulations = await postulationService.getByTask(id)
+      const userPostulation = postulations.data.find(
+        (p: any) => p.userId === currentUser.id
+      )
+      if (userPostulation) {
+        hasApplied.value = true
+      }
+    }
+  } catch (error) {
+    console.error('Error al cargar tarea:', error)
+    router.push('/tasks')
+  } finally {
+    isLoading.value = false
+  }
+})
+
+const goBack = () => {
+  router.push('/tasks')
+}
+
+const formatDate = (date: string) => {
+  if (!date) return 'Fecha no disponible'
+  return new Date(date).toLocaleDateString('es-ES', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+const changeStatus = async (newStatus: string) => {
+  if (!confirm(`¿Cambiar estado de "${task.value.status}" a "${newStatus}"?`)) return
+
+  isUpdating.value = true
+  try {
+    await taskService.updateStatus(task.value.id, newStatus)
+    task.value.status = newStatus
+
+    const historyResponse = await taskService.getHistory(task.value.id)
+    history.value = historyResponse.data
+
+    alert('Estado actualizado correctamente')
+  } catch (error: any) {
+    console.error('Error al cambiar estado:', error)
+    alert(error.response?.data?.message || 'Error al cambiar el estado')
+  } finally {
+    isUpdating.value = false
+  }
+}
+
+const getStatusClass = (status: string) => {
+  const classes: Record<string, string> = {
+    'Creada': 'status-published',
+    'En Progreso': 'status-progress',
+    'Finalizada': 'status-finished',
+    'Cancelada': 'status-cancelled'
+  }
+  return classes[status] || ''
 }
 </script>
 
@@ -149,6 +289,12 @@ const applyForTask = () => {
   color: #1e293b;
 }
 
+.loading-container {
+  text-align: center;
+  padding: 4rem;
+  color: #64748b;
+}
+
 .content-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -162,7 +308,6 @@ const applyForTask = () => {
   }
 }
 
-/* --- Tarea (Izquierda) --- */
 .task-info-card {
   background: white;
   border-radius: 12px;
@@ -238,6 +383,129 @@ const applyForTask = () => {
   font-size: 1.25rem;
 }
 
+.status-section {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.status-section h3 {
+  margin-bottom: 0.75rem;
+  color: #1e293b;
+}
+
+.status-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.status-btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.875rem;
+}
+
+.status-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.status-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.status-published {
+  background-color: #e0e7ff;
+  color: #3730a3;
+}
+
+.status-published:hover:not(:disabled) {
+  background-color: #c7d2fe;
+}
+
+.status-progress {
+  background-color: #fef3c7;
+  color: #b45309;
+}
+
+.status-progress:hover:not(:disabled) {
+  background-color: #fde68a;
+}
+
+.status-finished {
+  background-color: #dcfce7;
+  color: #166534;
+}
+
+.status-finished:hover:not(:disabled) {
+  background-color: #bbf7d0;
+}
+
+.status-cancelled {
+  background-color: #fee2e2;
+  color: #b91c1c;
+}
+
+.status-cancelled:hover:not(:disabled) {
+  background-color: #fecaca;
+}
+
+.history-section {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.history-section h3 {
+  margin-bottom: 0.75rem;
+  color: #1e293b;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background-color: #f8fafc;
+  border-radius: 6px;
+  font-size: 0.875rem;
+}
+
+.history-status {
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
+.history-status.old {
+  background-color: #f1f5f9;
+  color: #64748b;
+}
+
+.history-status.new {
+  background-color: #dcfce7;
+  color: #166534;
+}
+
+.history-date {
+  margin-left: auto;
+  color: #94a3b8;
+  font-size: 0.75rem;
+}
+
 .task-footer {
   margin-top: 2.5rem;
   padding-top: 1.5rem;
@@ -296,7 +564,6 @@ const applyForTask = () => {
   cursor: not-allowed;
 }
 
-/* --- Empleador (Derecha) --- */
 .employer-card {
   background: white;
   border-radius: 12px;

@@ -2,11 +2,11 @@
   <div class="dashboard-wrapper">
     <header class="dashboard-header">
       <div class="welcome-text">
-        <h1>¡Hola, julian! 👋</h1>
+        <h1>¡Hola, {{ userName }}! 👋</h1>
         <p>Aquí tienes un resumen de tu actividad en la plataforma.</p>
       </div>
       <div class="header-actions">
-        <button class="btn-primary">
+        <button class="btn-primary" @click="goToCreateTask">
           <i class="pi pi-plus"></i> Publicar Nueva Tarea
         </button>
       </div>
@@ -16,44 +16,41 @@
       <div class="stat-card">
         <div class="stat-icon bg-blue"><i class="pi pi-briefcase"></i></div>
         <div class="stat-info">
-          <h3>3</h3>
+          <h3>{{ stats.published }}</h3>
           <p>Tareas Publicadas</p>
         </div>
       </div>
       <div class="stat-card">
         <div class="stat-icon bg-green"><i class="pi pi-check-circle"></i></div>
         <div class="stat-info">
-          <h3>5</h3>
+          <h3>{{ stats.finished }}</h3>
           <p>Trabajos Finalizados</p>
         </div>
       </div>
       <div class="stat-card">
         <div class="stat-icon bg-yellow"><i class="pi pi-star"></i></div>
         <div class="stat-info">
-          <h3>4.8</h3>
+          <h3>{{ stats.rating }}</h3>
           <p>Calificación Promedio</p>
         </div>
       </div>
     </section>
 
     <section class="dashboard-content">
-      
       <div class="tasks-section">
         <div class="section-header">
           <h2>Mis Tareas Publicadas</h2>
         </div>
-        
         <div class="task-list">
           <div v-for="task in postedTasks" :key="task.id" class="task-item">
             <div class="task-info">
               <h4>{{ task.title }}</h4>
-              <p><i class="pi pi-calendar"></i> {{ task.date }}</p>
+              <p><i class="pi pi-calendar"></i> {{ task.createdAt || task.createdAT }}</p>
             </div>
-            <span class="status-badge" :class="task.statusClass">
+            <span class="status-badge" :class="getStatusClass(task.status)">
               {{ task.status }}
             </span>
           </div>
-          
           <div v-if="postedTasks.length === 0" class="empty-state">
             <p>No has publicado ninguna tarea aún.</p>
           </div>
@@ -64,73 +61,85 @@
         <div class="section-header">
           <h2>Mis Trabajos</h2>
         </div>
-        
         <div class="task-list">
           <div v-for="job in myJobs" :key="job.id" class="task-item">
             <div class="task-info">
               <h4>{{ job.title }}</h4>
-              <p><i class="pi pi-user"></i> Empleador: {{ job.employer }}</p>
+              <p><i class="pi pi-user"></i> Empleador: {{ job.employer || 'Desconocido' }}</p>
             </div>
-            <span class="status-badge" :class="job.statusClass">
+            <span class="status-badge" :class="getStatusClass(job.status)">
               {{ job.status }}
             </span>
           </div>
-
           <div v-if="myJobs.length === 0" class="empty-state">
             <p>No tienes trabajos activos en este momento.</p>
           </div>
         </div>
       </div>
-
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
+import { useAuthStore } from '../stores/auth.store';
+import { taskService } from '../services/tasks.service';
 
+const router = useRouter();
+const authStore = useAuthStore();
 
+const userName = ref('Usuario');
+const postedTasks = ref<any[]>([]);
+const myJobs = ref<any[]>([]);
+const stats = ref({ published: 0, finished: 0, rating: 0 });
 
-const postedTasks = ref([
-  {
-    id: 1,
-    title: 'Pintar la fachada de mi casa',
-    date: '15 Oct 2023',
-    status: 'En proceso',
-    statusClass: 'status-progress'
-  },
-  {
-    id: 2,
-    title: 'Arreglar tubería del lavaplatos',
-    date: '10 Oct 2023',
-    status: 'Finalizada',
-    statusClass: 'status-finished'
-  },
-  {
-    id: 3,
-    title: 'Limpieza profunda de apartamento',
-    date: '01 Oct 2023',
-    status: 'Cancelada',
-    statusClass: 'status-cancelled'
+onMounted(async () => {
+  if (authStore.user) {
+    userName.value = authStore.user.name || 'Usuario';
+    await loadData();
   }
-])
+});
 
-const myJobs = ref([
-  {
-    id: 101,
-    title: 'Pasear a mis dos perros',
-    employer: 'Carlos Gómez',
-    status: 'Publicada (Postulado)',
-    statusClass: 'status-published'
-  },
-  {
-    id: 102,
-    title: 'Entregar paquete urgente',
-    employer: 'María Rodríguez',
-    status: 'Finalizada',
-    statusClass: 'status-finished'
+const loadData = async () => {
+  try {
+    // Obtener tareas del usuario
+    const response = await taskService.getMyTasks();
+    postedTasks.value = response.data || [];
+    
+    // Calcular estadísticas
+    stats.value.published = postedTasks.value.length;
+    stats.value.finished = postedTasks.value.filter(
+      (t: any) => t.status === 'Finalizada' || t.status === 'finished'
+    ).length;
+    
+    // Para trabajos, podemos usar las mismas tareas o un endpoint específico
+    myJobs.value = postedTasks.value.filter(
+      (t: any) => t.status !== 'Creada' && t.status !== 'published'
+    );
+    
+  } catch (error) {
+    console.error('Error al cargar datos:', error);
   }
-])
+};
+
+const getStatusClass = (status: string) => {
+  const map: Record<string, string> = {
+    'Creada': 'status-published',
+    'published': 'status-published',
+    'En Progreso': 'status-progress',
+    'progress': 'status-progress',
+    'Finalizada': 'status-finished',
+    'finished': 'status-finished',
+    'Cancelada': 'status-cancelled',
+    'cancelled': 'status-cancelled',
+  };
+  return map[status] || 'status-published';
+};
+
+const goToCreateTask = () => {
+  router.push('/tasks/create');
+};
 </script>
 
 <style scoped>
@@ -140,7 +149,6 @@ const myJobs = ref([
   padding: 2rem 1rem;
 }
 
-/* --- Header --- */
 .dashboard-header {
   display: flex;
   justify-content: space-between;
@@ -222,7 +230,6 @@ const myJobs = ref([
   font-weight: 500;
 }
 
-
 .dashboard-content {
   display: grid;
   grid-template-columns: 1fr;
@@ -289,7 +296,6 @@ const myJobs = ref([
   gap: 0.25rem;
 }
 
-
 .status-badge {
   padding: 0.25rem 0.75rem;
   border-radius: 9999px;
@@ -301,17 +307,14 @@ const myJobs = ref([
   background-color: #e0e7ff;
   color: #3730a3;
 }
-
 .status-progress {
   background-color: #fef3c7;
   color: #b45309;
 }
-
 .status-finished {
   background-color: #dcfce7;
   color: #166534;
 }
-
 .status-cancelled {
   background-color: #fee2e2;
   color: #b91c1c;
