@@ -2,7 +2,7 @@
   <div class="app-layout">
     <div class="main-content">
       <main class="view-container">
-        <UserProfileView /> 
+        <HomeView  /> 
       </main>
     </div>
   </div>
@@ -12,7 +12,7 @@
 import AppNavbar from './components/AppNavbar.vue'
 
 
-import UserProfileView from './views/UserProfileView.vue'
+import HomeView from './views/HomeView.vue'
 </script>
 
 <style scoped>
